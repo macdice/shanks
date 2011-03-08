@@ -1,0 +1,47 @@
+Some quick and dirty hacks for experimenting with the syntax of a
+programming language that doesn't exist.  Work in progress.
+
+Some ideas:
+
+LEXER 
+
+Takes files, buffers and regions and converts them into lists of
+tokens; tokens consist of certain special symbols like T_LPAREN,
+identifiers which are any other symbol, and numbers and strings which
+represent constants
+
+class Wombat extends An:Aardvaark {
+    literal foo = "foo";
+}
+
+... produces ...  
+
+(T_CLASS Wombat T_EXTENDS An:Aardvaark T_LBRACE T_LITERAL foo T_EQ
+"foo" T_TERMINATE T_BRACE)
+
+PARSER
+
+Takes lists of tokens and produces S-expression-based ASTs.
+TODO example
+
+ANALYZER
+
+Processes ASTs and builds declaration data (tables of functions,
+classes, etc).
+
+TYPE CHECKER
+
+Processes method/message code and performs basic reference and type
+checking.
+
+INTERPRETER
+
+Tree walking interpreter...
+
+COMPILER
+
+Byte-code compiler ...
+
+VM
+
+VM based on instruction counting scheduler.
