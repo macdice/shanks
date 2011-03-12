@@ -5,6 +5,103 @@
 
 ;;; Commentary:
 ;; 
+;; Here is an informal grammar for this language which I inferred from
+;; some doodles I saw on some scraps of paper in a sushi restaurant.
+;;
+;; Before getting down to BNF, I understand that different kinds of
+;; identifiers have different spelling restrictions (package names and
+;; type names start with upper case, members start with underscore,
+;; and other identifiers start with lower case).
+;;
+;;                <type-id> ~ /[A-Z][a-zA-Z0-9]*/
+;;             <package-id> ~ /[A-Z][a-zA-Z0-9]*/
+;;              <member-id> ~ /_[a-z][a-zA-Z0-9]*/
+;;               <local-id> ~ /[a-z][a-zA-Z0-9]*/
+;;              <method-id> ~ /[a-z][a-zA-Z0-9]*/
+;;             <message-id> ~ /[a-z][a-zA-Z0-9]*/
+;;
+;; Here is an experimental pseudo-BNF grammar which may bear very
+;; little resemblance to the grammar used by paid-up Pony Club
+;; members:
+;;
+;;                 <module> = <import-directive>* 
+;;                            <definition>* 
+;;                            <EOF>
+;;                          ;
+;;       <import-directive> = "import" <package-id> ":" <type-id> ";"
+;;                          | "import" <package-id> ";"
+;;                          ;
+;;             <definition> = <class-definition> 
+;;                          | <enum-definition>
+;;                          ;
+;;       <class-definition> = <phylum> <type-id> <inheritence-spec>?
+;;                            "{" 
+;;                                <mmm-definition>* 
+;;                            "}"
+;;                          ;
+;;                 <phylum> = "class" | "immutable" | "interface"
+;;                          ;
+;;       <inheritence-spec> = <implements-spec>? <extends-spec>?
+;;                          ;
+;;        <implements-spec> = "implements" <type-spec> ("," <type-spec>)*
+;;                          ;
+;;           <extends-spec> = "extends" <type-spec>
+;;                          ;
+;;         <mmm-definition> = <member-definition>
+;;                          | <method-definition>
+;;                          | <message-definition>
+;;                          | <constructor-definition>
+;;                          ;
+;;      <member-definition> = <access-spec> <type-sec> <member-id> ";"
+;;                          ;
+;;              <type-spec> = <type-id> 
+;;                          | <package-id> ":" <type-id>
+;;                          ;
+;;      <method-definition> = <access-spec> <method-id> "(" <argument-list> ")" return-spec?
+;;                            "{"
+;;                                <statement>*
+;;                            "}"
+;;                          ;
+;;     <message-definition> = <access-spec> "message" <method-id> "(" <argument-list> ")"
+;;                            "{"
+;;                                <statement>*
+;;                            "}"
+;;                          ;
+;; <constructor-definition> = <access-spec> "ambient"?
+;;                            "new" <method-id> "(" <argument-list> ")" 
+;;                            "{"
+;;                                <statement>*
+;;                            "}"
+;;                          ;
+;;            <access-spec> = "public" | "private" | "package"
+;;                          ;
+;;          <argument-list> =
+;;                          | Typename name ("," <argument-list>)?
+;;                          ;
+;;            <return-spec> = "->" "(" <type-id> <local-id> ")"
+;;                          ;
+;;              <statement> = <simple-assignment> ";"
+;;                          | <expression> ";"
+;;                          | <jump-statement> ";"
+;;                          | ";"
+;;                          ;
+;;      <simple-assignment> = <lvalue> <assignment-operator> <expression>
+;;                          ;
+;;                 <lvalue> = <local-id> | <member-id>
+;;                          ;
+;;         <jump-statement> = "return"
+;;                          | "continue"
+;;                          | "break"
+;;                          ;
+;;             <expression> = <call>
+;;                          | <binary-expression>
+;;                          ;
+;;                   <call> = <local-id> "." name "(" <expression-list> ")"
+;;                          ;
+;;      <binary-expression> = <expression> <binary-operator> <expression>
+;;                          ;
+;;        <binary-operator> = "+" | "-" | "*" | "/" | "%"
+;;                          ;
 
 (require 'cl)
 
@@ -37,7 +134,7 @@
 
 (defstruct shanks-pe
   "A record type for holding parser environment."
-  (token-stack)
+  (token-stack)     ;; it's really more of a stream than a stack
   (ast-stack)
   (current-line)
   (state-stack)
@@ -79,112 +176,49 @@
         (shanks-pe-current-line pe) (shanks-pop! (shanks-pe-state-stack pe)))
   nil)
 
-;;; MISC
+;;; IDENTIFIERS and their SPELLING RULES
 
-(defun shanks-title-case-symbol-p (symbol)
-  (and (symbolp symbol)
-       (let ((first-letter (elt (symbol-name symbol) 0)))
-         (and (>= first-letter ?A)
-              (<= first-letter ?Z)))))
+(defun shanks-matching-symbol-p (regexp maybe-symbol)
+  "Check if REGEXP matches MAYBE-SYMBOL, or return nil if it's not a symbol."
+  (and (symbolp maybe-symbol)
+       (let ((case-fold-search nil))
+         (string-match-p regexp (symbol-name maybe-symbol)))))
 
-(defun shanks-valid-package-name-p (symbol)
-  (shanks-title-case-symbol-p symbol))
+(defun shanks-type-id-p (identifier)
+  (shanks-matching-symbol-p "^[A-Z][a-zA-Z0-9]*$" identifier))
 
-(defun shanks-valid-class-name-p (symbol)
-  (shanks-title-case-symbol-p symbol))
+(defun shanks-package-id-p (identifier)
+  (shanks-matching-symbol-p "^[A-Z][a-zA-Z0-9]*$" identifier))
 
-;;; GRAMMAR
+(defun shanks-local-id-p (identifier)
+  (shanks-matching-symbol-p "^[a-z][a-zA-Z0-9]*$" identifier))
 
-;;           <module> = <import-directive>* <declaration>* <EOF>
-;; <import-directive> = "import" Name;
-;;      <declaration> = <class-definition> | <immutable-definition>
-;; <class-definition> = "class" Name <base-spec>? "{" <mmm-definition>* "}"
-;; <immut-definition> = "immutable" Name <base-spec>? "{" <mmm-definition>* "}"
-;;        <base-spec> = implements-spec? extends-spec?
-;;  <implements-spec> = "implements" Name ("," Name)*
-;;     <extends-spec> = "extends" NAME
-;;   <mmm-definition> = <member-definition>
-;;                    | <method-definition>
-;;                    | <message-definition>
-;;                    | <constructor-definition>
-;;<member-definition> = Typename _name;
-;;<method-definition> = <access-spec> name "(" <argument-list> ")" return-spec?
-;;      <access-spec> = "public" | "private" | "package"
-;;    <argument-list> =
-;;                    | Typename name ("," <argument-list>)?
-;;      <return-spec> = "->" "(" Typename name ")"
+(defun shanks-member-id-p (identifier)
+  (shanks-matching-symbol-p "^_[a-zA-Z0-9]*$" identifier))
+
+(defun shanks-method-id-p (identifier)
+  (shanks-matching-symbol-p "^[a-z][a-zA-Z0-9]*$" identifier))
+
+;;; RECURSIVE DESCENT
 
 (defun shanks-parse-module! (pe)
   (shanks-begin! pe)
   (loop while (shanks-parse-import-directive! pe))
-  (loop while (shanks-parse-declaration! pe))
+  (loop while (shanks-parse-definition! pe))
   (if (shanks-end-of-stream? pe)
       (shanks-commit! pe)
     (shanks-error! "Unexpected token: %S" (shanks-peek pe))
     (shanks-rollback! pe)))
 
-(defun shanks-parse-declaration! (pe)
+(defun shanks-parse-definition! (pe)
   (or (shanks-parse-class-definition! pe)
-      (shanks-parse-immutable-definition! pe)
-      (shanks-parse-import-directive! pe)))
+      (shanks-parse-enum-definition! pe)))
 
 (defun shanks-parse-class-definition! (pe)
-  (shanks-begin! pe)
-  (if (eq (shanks-next! pe) 'T_CLASS)
-      (let ((name (shanks-next! pe)))
-        (if (shanks-valid-class-name-p next)
-            (progn
-              (shanks-parse-base-spec! pe)
-              (if (eq (shanks-next! pe) 'T_LBRACE)
-                  (if (shanks-parse-member-definitions pe)
-                      (if (eq (shanks-peek pe) 'T_RBRACE)
-                          (progn
-                            (shanks-pop! pe)
-                            (shanks-rollback! pe))
-                        (shanks-rollback! pe))
-                    (shanks-rollback! pe))))
-          (shanks-rollback! pe)))
-    (shanks-rollback! pe)))
-
-(defun shanks-base-speck! (pe)
-  (shanks-implements-spec! pe)
-  (shanks-extends-spec! pe))
-
-(defun shanks-implements-spec! (pe)
-  (shanks-begin! pe)
-  (if (eq (shanks-pop! pe) 'T_IMPLEMENTS)
-      (progn
-        (shanks-pop! pe)
-        (let ((name (shanks-pop! pe)))
-          (if (shanks-valid-package-name-p name)
-              (p
-    (shanks-rollback! pe)))
-
-;; immutable-definition = immutable <A> [heirarchy-specification]
-;;                        {
-;;                            member-definitions
-;;                        }
-
-;; heirarchy-specification = [implements <A> [, <B> ...]] [extends <C>]
-
-;; member-definitions = member-definition ...
-
-
-(defun shanks-parse-import-directive! (pe)
-  (shanks-begin! pe)
-  (let ((keyword (shanks-next! pe)))
-    (if (eq keyword 'T_IMPORT)
-        (let ((package-name (shanks-next! pe)))
-          (if (shanks-valid-package-name-p package-name)
-              (let ((terminator (shanks-next! pe)))
-                (if (eq 'T_TERMINATOR terminator)
-                    (shanks-append! `(import ,package-name) pe)
-                  (shanks-rollback! pe)))
-            (shanks-rollback! pe)))
-      (shanks-rollback! pe))))
+  (error "TODO"))
 
 (defun shanks-parse (tokens)
-  "Parse TOKENS into an AST."
+  "Parse TOKENS representing one complete module producing an AST."
   (error "WRITE ME"))
 
 (provide 'shanks-parser)
