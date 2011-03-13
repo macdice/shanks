@@ -115,18 +115,18 @@
   "Return a list of objects on STACK starting with the top."
   (car stack))
 
-(defun shanks-peek (stack)
+(defun shanks-stack-peek (stack)
   "Return but do not consume the head item from STACK."
   (car (car stack)))
 
-(defun shanks-pop! (stack)
+(defun shanks-stack-pop! (stack)
   "Return and consume the top item from STACK destructively."
   (let* ((pair (car stack))
          (object (car pair)))
     (setf (car stack) (cdr pair))
     object))
 
-(defun shanks-push! (object stack)
+(defun shanks-stack-push! (object stack)
   "Push OBJECT onto STACK destructively."
   (setf (car stack) (cons object (car stack))))
 
@@ -135,7 +135,7 @@
 (defstruct shanks-pe
   "A record type for holding parser environment."
   (token-stack)     ;; it's really more of a stream than a stack
-  (ast-stack)
+  (work-stack)
   (current-line)
   (state-stack)
   (error-message))
@@ -143,7 +143,7 @@
 (defun shanks-make-pe (tokens)
   "Make a new parser environment ready to consume a list of TOKENS."
   (make-shanks-pe :token-stack (shanks-list->stack tokens)
-                  :ast-stack (shanks-list->stack '())
+                  :work-stack (shanks-list->stack '())
                   :current-line 1
                   :state-stack (shanks-list->stack '())))
   
@@ -151,7 +151,10 @@
 (defun shanks-next! (pe)
   "Get the next token."
   ;; TODO consume special line number tokens and update line number
-  (shanks-pop! (shanks-token-stack pe)))
+  (shanks-stack-pop! (shanks-pe-token-stack pe)))
+
+(defun shanks-peek (pe)
+  (shanks-stack-peek (shanks-pe-token-stack pe)))
 
 (defun shanks-error! (pe message)
   "Set the error message in PE to MESSAGE."
@@ -216,6 +219,55 @@
 
 (defun shanks-parse-class-definition! (pe)
   (error "TODO"))
+
+(defun shanks-parse-call! (pe)
+  nil)
+
+(defun shanks-parse-literal! (pe)
+  (let ((token (shanks-peek pe)))
+    (if (or (numberp token)
+            (stringp token))
+        (progn
+          (shanks-push! `(literal ,token) (shanks-pe-work-stack pe))
+          (shanks-next! pe))
+      nil)))
+
+(defun shanks-parse-identifier! (pe)
+    (let ((token (shanks-peek pe)))
+      (if (or (shanks-local-id-p token)
+              (shanks-member-id-p token))
+          (progn
+            (shanks-push! token (shanks-pe-work-stack pe))
+            (shanks-next! pe))
+        nil)))
+
+(defun shanks-parse-binary-operator! (pe)
+  (let ((token (shanks-peek pe)))
+    (if (memq token '(+ - / *))
+        (progn
+          (shanks-push! token (shanks-pe-work-stack pe))
+          (shanks-next! pe))
+      nil)))
+
+(defun shanks-parse-expression! (pe)
+  ;; To avoid the problem of left recursion in a recursive descent
+  ;; parser, we treat binary operators specially (and I don't know how
+  ;; to represent this in the BNF above)
+  (shanks-begin! pe)
+  (if (or (shanks-parse-call! pe)
+          (shanks-parse-identifier! pe)
+          (shanks-parse-literal! pe))
+      (if (shanks-parse-binary-operator! pe)
+          (if (shanks-parse-expression! pe)
+              (let ((expr2 (shanks-pop! (shanks-pe-work-stack pe)))
+                    (operator (shanks-pop! (shanks-pe-work-stack pe)))
+                    (expr1 (shanks-pop! (shanks-pe-work-stack pe))))
+                (shanks-push! `(,operator ,expr1 ,expr2)
+                              (shanks-pe-work-stack pe))
+                (shanks-commit! pe))
+            (shanks-rollback! pe))
+        t)
+    nil))
 
 (defun shanks-parse (tokens)
   "Parse TOKENS representing one complete module producing an AST."
