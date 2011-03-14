@@ -77,6 +77,8 @@
            (end-of-line))
           ;; TODO!
           (t
+           ;; handle single character tokens ever so slightly more
+           ;; efficiently
            (case (char-after)
              ((?\=) (forward-char) 'T_EQ)
              ((?\{) (forward-char) 'T_LBRACE)
