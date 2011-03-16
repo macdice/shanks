@@ -1,3 +1,81 @@
+;; Compilation
+;;
+;; Here is what our ASTs look like:
+;;
+;; (package MyPackage
+;;   (class MyClass
+;;     (OtherPackage OtherClass)                    ;; base class
+;;     ((OtherPackage InterfaceX))                  ;; interfaces
+;;     (member public (OtherPackage FooClass)) _x)  ;; a member
+;;     (member private U8 _y)                       ;; a member
+;;     (method public                               ;; a method
+;;       ((I32 r))                                  ;; return arguments
+;;       (((OtherPackage FooClass) a)               ;; call arguments
+;;        (I32 b))
+;;       (block
+;;         (= r (+ 1 b))))
+;;
+;; Some notes:
+;;
+;; * type specs look like (Package Class) for classes in a named
+;;   package, Class for 'in this package', and U8 etc for certain
+;;   built-in types that are not in any package you can name
+;;
+;; Overview of compilation process:
+;;
+;; * a root package and class are named by the user
+;; * a new shanks-model is created
+;; * the named class's source is found on the search path, and parsed
+;; * the parsed class is analysed with shanks-analyze:
+;; ** shanks-class, shanks-method, shanks-member etc objects are created
+;; ** any referenced types that are not already defined are remembered
+;; ** ...
+;; ** each referenced class that is not already loaded 
+
+(defun shanks-analyze (model package-expr)
+  "Update MODEL with the results of analyzing EXPR.
+This is the first phase of compilation, and builds our model of
+classes and their members/methods/messages."
+  (assert (eq (first package-expr 'package)))
+  (let ((package-id (second (package-expr))))
+    (assert (symbolp package-id))
+    (let ((package (gethash package-id (model-packages model))))
+      (unless package
+        (setf package (make-shanks-package :id package-id))
+        (setf (gethash package-id (model-packages model)) package))
+      (loop for definition-expr in (cddr package-expr) do
+            (case (car definition-expr)
+              ((class)
+               (let ((class-id (second definition-expr))
+                     (base-class-spec (third definition-expr))
+                     (interfaces (fourth definition-expr)))
+                 (assert (symbolp class-id))
+                 (when (gethash class-id (shanks-package-classes package))
+                   (error "Class %s already defined in package %s"
+                          class-id
+                          package-id))
+                 (let ((class (make-shanks-class :id class-id
+                                                 :base base-class-spec
+                                                 :interfaces interfaces)))
+                   (loop for subdef in (nthcdr 4 definition-expr) do
+                         (case (car subdef)
+                           ((member)
+                            (push (make-shanks-member 
+                                   :access (second subdef)
+                                   :type (third subdef)
+                                   :id (forth subdef)
+                                   :class class)
+                                  (shanks-class-members class)))
+                           ((method)
+                            (push (make-shanks-method
+                                   :
+                            
+            
+
+(defun shanks-resolve-types (model)
+  "Update MODEL so that all argument types are resolved."
+  TODO)
+
 (defun shanks-range-check (model expr min max)
   (and (>= expr min)
        (<= expr max)))
