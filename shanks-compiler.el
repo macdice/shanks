@@ -24,13 +24,19 @@
 ;; Overview of compilation process:
 ;;
 ;; * a root package and class are named by the user
-;; * a new shanks-model is created
-;; * the named class's source is found on the search path, and parsed
-;; * the parsed class is analysed with shanks-analyze:
-;; ** shanks-class, shanks-method, shanks-member etc objects are created
-;; ** any referenced types that are not already defined are remembered
-;; ** ...
-;; ** each referenced class that is not already loaded 
+;; * a new shanks-model is created with one type-specs-to-load
+;; * parsing and analysis, while there is at least one type-specs-to-load
+;; ** the class's source is found on the search path, and parsed
+;; ** the parsed class is analysed with shanks-analyze
+;; *** shanks-class, shanks-method, shanks-member etc objects are created
+;; *** all unknown type-specs are added to type-specs-to-load
+;; ** method and message bodies are scanned for type-spec references
+;; * type-spec resolution
+;; ** all types referenced in members, methods are resolved to shanks-class objects
+;; * transformations
+;; ** literal names replaced with their value
+;; ** constant-folding
+;; ** compile to bytecode
 
 (defun shanks-analyze (model package-expr)
   "Update MODEL with the results of analyzing EXPR.
@@ -68,8 +74,25 @@ classes and their members/methods/messages."
                                   (shanks-class-members class)))
                            ((method)
                             (push (make-shanks-method
-                                   :
-                            
+                                   :access (second subdef)
+                                   :arguments (third subdef)
+                                   :returns (fourth subdef)
+                                   :message nil
+                                   :class class)
+                                  (shanks-class-methods class)))
+                           ((message)
+                            (push (make-shanks-method
+                                   :access (second subdef)
+                                   :arguments (third subdef)
+                                   :returns nil
+                                   :message t
+                                   :class class)
+                                  (shanks-class-messages class)))
+
+
+
+
+
             
 
 (defun shanks-resolve-types (model)

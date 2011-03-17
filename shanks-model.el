@@ -27,12 +27,15 @@
   (members))
 
 (defstruct shanks-method
-  "A record type for methods."
+  "A record type for methods (and messages)."
   (id)              ;; ID as a symbol
   (class)           ;; shanks-class
   (access)          ;; symbol, one of public, private, package
-  (argument-types)  ;; list of (<type> <name>) [type-spec or shanks-type]
-  (return-types))
+  (arguments)       ;; list of (<type> <name>) [type-spec or shanks-type]
+  (returns)
+  (message)         ;; t, nil
+  (source)          ;; AST for body
+  (bytecode))
 
 (defstruct shanks-member
   "A record type for member variables."
