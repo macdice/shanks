@@ -13,7 +13,7 @@
 (defstruct shanks-model
   "The compiler/analyser environment."
   (packages (make-hash-table)) ;; symbol->shanks-package
-  (classes-to-load)            ;; list of (package-id class-id)
+  (names)                      ;; all package names in lower case
   (frames)                     ;; list of alists of local scopes
   (errors))                    ;; list of errors
 
@@ -24,7 +24,8 @@
   (interfaces)
   (methods)
   (messages)
-  (members))
+  (members)
+  (names))
 
 (defstruct shanks-method
   "A record type for methods (and messages)."
@@ -52,7 +53,9 @@
 (defstruct shanks-package
   "A record type for packages."
   (id)
-  (enums (make-hash-table)) ;; symbol->shanks-enum
+  (packages (make-hash-table))   ;; symbol->shanks-package
+  (names)
+  (enums (make-hash-table))      ;; symbol->shanks-enum
   (classes (make-hash-table)))
 
 (defstruct shanks-reference

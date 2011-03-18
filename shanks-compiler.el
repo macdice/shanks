@@ -56,7 +56,8 @@ classes and their members/methods/messages."
                      (base-class-spec (third definition-expr))
                      (interfaces (fourth definition-expr)))
                  (assert (symbolp class-id))
-                 (when (gethash class-id (shanks-package-classes package))
+                 (when (member (downcase (symbol-name class-id))
+                               (shanks-package-names package))
                    (error "Class %s already defined in package %s"
                           class-id
                           package-id))
