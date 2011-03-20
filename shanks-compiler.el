@@ -38,63 +38,78 @@
 ;; ** constant-folding
 ;; ** compile to bytecode
 
-(defun shanks-analyze (model package-expr)
+(defun shanks-error (model format &rest arguments)
+  (push (apply #'format format arguments)
+        (shanks-model-errors model)))
+
+(defun shanks-find-or-create-package (model package-spec)
+  "Return the package in MODEL which corresponds to PACKAGE-SPEC.
+If no package exists matching the spec, then a new one is created.
+A package spec is a list of package IDs.  A package ID is a symbol."
+  (labels ((search (package package-spec)
+    (if (null package-spec) 
+        package
+      (let* ((package-id (car package-spec))
+             (child-package (gethash (car package-spec) 
+                                     (shanks-package-packages package))))
+        (if (null child-package)
+            (let ((name-in-lower-case (downcase (symbol-name package-id)))
+                  (child-package (make-shanks-package :id package-id)))
+              (if (member name-in-lower-case (shanks-package-names package))
+                  (shanks-error model 
+                                "Can't define package %S due to name conflict"
+                                package-id)
+                (setf (gethash package-id (shanks-package-packages package))
+                      child-package)
+                (push name-in-lower-case (shanks-package-names package))
+                (search child-package (cdr package-spec))))
+          (search child-package (cdr package-spec)))))))
+    (search (shanks-model-root model) package-spec)))
+
+(defun shanks-analyze (model package-spec definition-expr)
   "Update MODEL with the results of analyzing EXPR.
 This is the first phase of compilation, and builds our model of
 classes and their members/methods/messages."
-  (assert (eq (first package-expr 'package)))
-  (let ((package-id (second (package-expr))))
-    (assert (symbolp package-id))
-    (let ((package (gethash package-id (model-packages model))))
-      (unless package
-        (setf package (make-shanks-package :id package-id))
-        (setf (gethash package-id (model-packages model)) package))
-      (loop for definition-expr in (cddr package-expr) do
-            (case (car definition-expr)
-              ((class)
-               (let ((class-id (second definition-expr))
-                     (base-class-spec (third definition-expr))
-                     (interfaces (fourth definition-expr)))
-                 (assert (symbolp class-id))
-                 (when (member (downcase (symbol-name class-id))
-                               (shanks-package-names package))
-                   (error "Class %s already defined in package %s"
-                          class-id
-                          package-id))
-                 (let ((class (make-shanks-class :id class-id
-                                                 :base base-class-spec
-                                                 :interfaces interfaces)))
-                   (loop for subdef in (nthcdr 4 definition-expr) do
-                         (case (car subdef)
-                           ((member)
-                            (push (make-shanks-member 
-                                   :access (second subdef)
-                                   :type (third subdef)
-                                   :id (forth subdef)
-                                   :class class)
-                                  (shanks-class-members class)))
-                           ((method)
-                            (push (make-shanks-method
-                                   :access (second subdef)
-                                   :arguments (third subdef)
-                                   :returns (fourth subdef)
-                                   :message nil
-                                   :class class)
-                                  (shanks-class-methods class)))
-                           ((message)
-                            (push (make-shanks-method
-                                   :access (second subdef)
-                                   :arguments (third subdef)
-                                   :returns nil
-                                   :message t
-                                   :class class)
-                                  (shanks-class-messages class)))
-
-
-
-
-
-            
+  (let ((package (shanks-find-or-create-package model package-spec)))
+    (case (car definition-expr)
+      ((class)
+       (let ((class-id (second definition-expr))
+             (base-class-spec (third definition-expr))
+             (interfaces (fourth definition-expr)))
+         (assert (symbolp class-id))
+         (when (member (downcase (symbol-name class-id))
+                       (shanks-package-names package))
+           (error "Class %s already defined in package %s"
+                  class-id
+                  package-id))
+         (let ((class (make-shanks-class :id class-id
+                                         :base base-class-spec
+                                         :interfaces interfaces)))
+           (loop for subdef in (nthcdr 4 definition-expr) do
+                 (case (car subdef)
+                   ((member)
+                    (push (make-shanks-member 
+                           :access (second subdef)
+                           :type (third subdef)
+                           :id (forth subdef)
+                           :class class)
+                          (shanks-class-members class)))
+                   ((method)
+                    (push (make-shanks-method
+                           :access (second subdef)
+                           :arguments (third subdef)
+                           :returns (fourth subdef)
+                           :message nil
+                           :class class)
+                          (shanks-class-methods class)))
+                   ((message)
+                    (push (make-shanks-method
+                           :access (second subdef)
+                           :arguments (third subdef)
+                           :returns nil
+                           :message t
+                           :class class)
+                          (shanks-class-messages class)))))))))))
 
 (defun shanks-resolve-types (model)
   "Update MODEL so that all argument types are resolved."
@@ -152,3 +167,48 @@ classes and their members/methods/messages."
                         (first return-types)
                       (push (make-shanks-error :message "Expected single return value")
                             (shanks-model-errors model))))))
+              (error "TODO")))))))
+
+(defun shanks-find-source-path (search-paths package-spec class-id)
+  "Search directories SEARCH-PATHS for a Pony file for PACKAGE-SPEC and CLASS-ID.
+PACKAGE-SPEC is a list of package ID symbols, and CLASS-ID is a
+symbol.  The return value is nil if the source file can't be
+found, or the path as a string if it could."
+  (let ((path (concat (mapconcat (lambda (package-id)
+                                   (downcase (symbol-name package-id)))
+                                 package-spec 
+                                 "/")
+                      "/"
+                      (downcase (symbol-name class-id))
+                      ".pony")))
+    (loop for base in search-paths
+          for maybe-path = (concat base "/" path)
+          if (file-exists-p maybe-path)
+          return maybe-path)))
+
+(defun shanks-package-spec-and-class-id->string (package-spec class-id)
+  "Produce a friendly string version of PACKAGE-SPEC and CLASS-ID
+for messages."
+  (concat (mapconcat #'symbol-name package-spec ":") ":" (symbol-name class-id)))
+
+(defun shanks-compile-from-class (search-paths package-spec class-id)
+  "Compile a named class, and everything it references, and return a model."
+  (let ((model (make-shanks-model)))
+    (push (list package-spec class-id) (shanks-model-to-load model))
+    (while (and (null (shanks-model-errors model))
+                (shanks-model-to-load model))
+      (let* ((to-load (pop (shanks-model-to-load model)))
+             (package-spec (first to-load))
+             (class-id (second to-load))
+             (path (shanks-find-source-path search-paths package-spec class-id)))
+        (if (null path)
+            (shanks-error model 
+                          "Cannot find source for %s:%s" 
+                          (shanks-package-spec-and-class-id->string package-spec
+                                                                    class-id))
+          (let ((tokens (shanks-lex-file path)))
+            ;; TODO how to signal errors?
+            (let ((definition-exprs (shanks-parse tokens)))
+              ;; TODO how to signal errors? break loop on error?
+              (loop for definition-expr in definition-exprs do 
+                    (shanks-analyze model package-spec definition-expr)))))))))

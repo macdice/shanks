@@ -10,12 +10,20 @@
 
 ;;; Code:
 
+(defstruct shanks-package
+  "A record type for packages."
+  (id)
+  (packages (make-hash-table))   ;; symbol->shanks-package
+  (enums (make-hash-table))      ;; symbol->shanks-enum
+  (classes (make-hash-table))
+  (names))                       ;; lowercase strings for clash detection
+
 (defstruct shanks-model
   "The compiler/analyser environment."
-  (packages (make-hash-table)) ;; symbol->shanks-package
-  (names)                      ;; all package names in lower case
+  (root (make-shanks-package)) ;; root package
   (frames)                     ;; list of alists of local scopes
-  (errors))                    ;; list of errors
+  (errors)                     ;; list of errors
+  (to-load))                   ;; list of (package-spec class-id) to load
 
 (defstruct shanks-class
   "A record type for class information."
@@ -49,14 +57,6 @@
   "A record type for enumerations."
   (id)
   (enumerators))
-
-(defstruct shanks-package
-  "A record type for packages."
-  (id)
-  (packages (make-hash-table))   ;; symbol->shanks-package
-  (names)
-  (enums (make-hash-table))      ;; symbol->shanks-enum
-  (classes (make-hash-table)))
 
 (defstruct shanks-reference
   "A record type for a reference (local variable or method parameter)."

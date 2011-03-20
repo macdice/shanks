@@ -66,10 +66,10 @@
            (let ((result (intern (match-string-no-properties 1))))
              (goto-char (match-end 0))
              result))
-          ((shanks-looking-at-skip "!=" end) 'T_NE)
-          ((shanks-looking-at-skip "import\\>" end) 'T_IMPORT)
-          ((shanks-looking-at-skip "not\\>" end) 'T_NOT)
-          ((shanks-looking-at-skip "and\\>" end) 'T_AND)
+          ((shanks-looking-at-skip "!=" end) '!=)
+          ((shanks-looking-at-skip "import\\>" end) 'import)
+          ((shanks-looking-at-skip "not\\>" end) 'not)
+          ((shanks-looking-at-skip "and\\>" end) 'and)
           ((shanks-looking-at-skip "/\\*" end)
            (search-forward "*/")
            (shanks-lex-here end))
@@ -79,19 +79,13 @@
           (t
            ;; handle single character tokens ever so slightly more
            ;; efficiently
-           (case (char-after)
-             ((?\=) (forward-char) 'T_EQ)
-             ((?\{) (forward-char) 'T_LBRACE)
-             ((?\}) (forward-char) 'T_RBRACE)
-             ((?\() (forward-char) 'T_LPAREN)
-             ((?\)) (forward-char) 'T_RPAREN)
-             ((?\[) (forward-char) 'T_LBRACKET)
-             ((?\]) (forward-char) 'T_RBRACKET)
-             ((?\<) (forward-char) 'T_LANGLE)
-             ((?\>) (forward-char) 'T_RANGLE)
-             ((?\.) (forward-char) 'T_DOT)
-             ((?\;) (forward-char) 'T_TERMINATOR)
-             (t (error "Cannot lex at line %d" (current-line))))))))
+           (let ((c (char-after)))
+             (case c
+               ((?\= ?\{ ?\} ?\( ?\) ?\[ ?\] ?\< ?\> ?\. ?\;)
+                (let ((result (intern (string c))))
+                  (forward-char)
+                  result))
+               (t (error "Cannot lex at line %d" (current-line)))))))))
 
 (defun shanks-lex-region (begin end)
   "Lex the region inside BEGIN, END and return a list of tokens."
@@ -100,6 +94,11 @@
     (loop for token = (shanks-lex-here end)
           until (eq token 'end-of-file)
           collect token)))
+
+(defun shanks-lex-file (path)
+  (with-temp-buffer
+    (insert-file-contents path)
+    (shanks-lex-region (point-min) (point-max))))
 
 (provide 'shanks-lexer)
 
