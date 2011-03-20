@@ -54,8 +54,11 @@
 ;;                          ;
 ;;      <member-definition> = <access-spec> <type-sec> <member-id> ";"
 ;;                          ;
-;;              <type-spec> = <type-id> 
-;;                          | <package-id> ":" <type-id>
+;;              <type-spec> = (<package-id> ":")* <type-id> ("<" <type-spec-list> ">")?
+;;                          ;
+;;         <type-spec-list> = <type-spec> ("," <type-spec>)*
+;;                          ;
+;;          <ref-type-spec> = <type-spec> "*"?
 ;;                          ;
 ;;      <method-definition> = <access-spec> <method-id> "(" <argument-list> ")" return-spec?
 ;;                            "{"
@@ -276,6 +279,7 @@
   ;; To avoid the problem of left recursion in a recursive descent
   ;; parser, we treat binary operators specially (and I don't know how
   ;; to represent this in the BNF above)
+  ;; TODO completely wrong, start again
   (shanks-begin! pe)
   (if (or (shanks-parse-call! pe)
           (shanks-parse-identifier! pe)
